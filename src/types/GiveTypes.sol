@@ -21,10 +21,10 @@ library GiveTypes {
      */
     enum AdapterKind {
         Unknown, // Default/uninitialized state
-        CompoundingValue, // Adapter where token value compounds over time
-        ClaimableYield, // Adapter with separate claimable yield mechanism
-        BalanceGrowth, // Adapter where balance grows (e.g., Aave aTokens)
-        PerpetualYieldToken // Adapter using perpetual yield tokens
+        CompoundingValue, // Balance constant, exchange rate accrues (e.g., sUSDe, wstETH, Compound cTokens)
+        ClaimableYield, // Yield must be claimed and realised during harvest (e.g., liquidity mining rewards)
+        BalanceGrowth, // Balance increases automatically over time (e.g., Aave aTokens)
+        FixedMaturityToken // Principal/yield tokens with maturity or expiry (e.g., Pendle PT)
     }
 
     /**
