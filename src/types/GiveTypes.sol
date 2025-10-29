@@ -46,6 +46,7 @@ library GiveTypes {
         Unknown, // Default/uninitialized state
         Submitted, // Campaign submitted by proposer, awaiting admin approval
         Approved, // Campaign approved by admin, vault not yet deployed
+        Rejected, // Campaign rejected by admin, deposit slashed
         Active, // Campaign is active with deployed vault accepting deposits
         Paused, // Campaign temporarily paused (e.g., failed checkpoint)
         Completed, // Campaign successfully completed
