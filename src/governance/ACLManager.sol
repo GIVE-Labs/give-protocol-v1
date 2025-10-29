@@ -78,8 +78,8 @@ contract ACLManager is Initializable, UUPSUpgradeable, IACLManager {
     bytes32 public constant ROLE_CAMPAIGN_ADMIN = keccak256("ROLE_CAMPAIGN_ADMIN");
 
     /**
-     * @notice Campaign creator role - can propose campaigns
-     * @dev Permissionless campaign submission (with deposit)
+     * @notice Campaign creator role - reserved for future gating of campaign submissions
+     * @dev Currently not enforced; anyone can submit campaigns with deposit
      */
     bytes32 public constant ROLE_CAMPAIGN_CREATOR = keccak256("ROLE_CAMPAIGN_CREATOR");
 
