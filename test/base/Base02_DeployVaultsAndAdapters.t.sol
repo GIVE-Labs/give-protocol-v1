@@ -201,12 +201,9 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
             address(usdc), // asset
             "GIVE USDC Vault", // name
             "gvUSDC", // symbol
-            address(aclManager),
-            address(protocolCore),
-            address(ngoRegistry),
-            1000, // 10% cash buffer
-            100, // 1% slippage
-            50 // 0.5% max loss
+            admin, // admin
+            address(aclManager), // acl
+            address(giveVaultImpl) // implementation
         );
 
         ERC1967Proxy usdcVaultProxy = new ERC1967Proxy(address(giveVaultImpl), usdcVaultInitData);
@@ -247,12 +244,9 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
             address(dai), // asset
             "GIVE DAI Vault", // name
             "gvDAI", // symbol
-            address(aclManager),
-            address(protocolCore),
-            address(ngoRegistry),
-            1000, // 10% cash buffer
-            100, // 1% slippage
-            50 // 0.5% max loss
+            admin, // admin
+            address(aclManager), // acl
+            address(giveVaultImpl) // implementation
         );
 
         ERC1967Proxy daiVaultProxy = new ERC1967Proxy(address(giveVaultImpl), daiVaultInitData);
