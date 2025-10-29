@@ -246,6 +246,15 @@ contract MockYieldAdapter is IYieldAdapter, ACLShim {
     }
 
     /**
+     * @notice Sets the total assets directly for testing
+     * @dev Useful for testing rebalancing logic without actual deposits.
+     * @param totalAssets_ The total assets amount to set
+     */
+    function setTotalAssets(uint256 totalAssets_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _totalAssets = totalAssets_;
+    }
+
+    /**
      * @notice Manually adds yield tokens for controlled testing
      * @dev Simulates external yield generation by accepting token transfers.
      *      Tokens are added to adapter balance but not to _totalAssets,
