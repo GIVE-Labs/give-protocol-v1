@@ -175,9 +175,8 @@ contract CampaignVaultFactory is Initializable, UUPSUpgradeable {
         }
 
         // Validate campaign-strategy match
-        (bool success, bytes memory data) = campaignRegistry.staticcall(
-            abi.encodeWithSignature("getCampaign(bytes32)", params.campaignId)
-        );
+        (bool success, bytes memory data) =
+            campaignRegistry.staticcall(abi.encodeWithSignature("getCampaign(bytes32)", params.campaignId));
         if (!success) revert InvalidParameters();
 
         GiveTypes.CampaignConfig memory campaignCfg = abi.decode(data, (GiveTypes.CampaignConfig));
@@ -219,16 +218,20 @@ contract CampaignVaultFactory is Initializable, UUPSUpgradeable {
 
         // Wire into registries and router
         (success,) = campaignRegistry.call(
-            abi.encodeWithSignature("setCampaignVault(bytes32,address,bytes32)", params.campaignId, vault, params.lockProfile)
+            abi.encodeWithSignature(
+                "setCampaignVault(bytes32,address,bytes32)", params.campaignId, vault, params.lockProfile
+            )
         );
         if (!success) revert InvalidParameters();
 
-        (success,) =
-            strategyRegistry.call(abi.encodeWithSignature("registerStrategyVault(bytes32,address)", params.strategyId, vault));
+        (success,) = strategyRegistry.call(
+            abi.encodeWithSignature("registerStrategyVault(bytes32,address)", params.strategyId, vault)
+        );
         if (!success) revert InvalidParameters();
 
-        (success,) =
-            payoutRouter.call(abi.encodeWithSignature("registerCampaignVault(address,bytes32)", vault, params.campaignId));
+        (success,) = payoutRouter.call(
+            abi.encodeWithSignature("registerCampaignVault(address,bytes32)", vault, params.campaignId)
+        );
         if (!success) revert InvalidParameters();
 
         (success,) = payoutRouter.call(abi.encodeWithSignature("setAuthorizedCaller(address,bool)", vault, true));
@@ -267,10 +270,8 @@ contract CampaignVaultFactory is Initializable, UUPSUpgradeable {
         );
 
         // Compute CREATE2 address
-        bytes memory proxyBytecode = abi.encodePacked(
-            type(ERC1967Proxy).creationCode,
-            abi.encode(vaultImplementation, initData)
-        );
+        bytes memory proxyBytecode =
+            abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(vaultImplementation, initData));
 
         bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(proxyBytecode)));
 
