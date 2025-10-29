@@ -200,7 +200,9 @@ contract Base01_DeployCore is Test {
             admin, // initialAdmin
             address(aclManager), // aclManager
             address(campaignRegistry), // campaignRegistry
-            protocolTreasury // feeRecipient
+            protocolTreasury, // feeRecipient (same as treasury initially)
+            protocolTreasury, // protocolTreasury
+            250 // feeBps (2.5% initial fee)
         );
 
         ERC1967Proxy payoutProxy = new ERC1967Proxy(address(payoutImpl), payoutInitData);
