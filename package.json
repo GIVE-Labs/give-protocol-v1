@@ -1,13 +1,37 @@
 {
-  "name": "give-protocol-v1",
+  "name": "@give/protocol-v1",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "GIVE Protocol V1 - No-loss donation platform using ERC-4626 vaults and yield-generating strategies",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "forge fmt && forge build",
+    "test": "forge fmt && forge test",
+    "test:verbose": "forge fmt && forge test -vvv",
+    "test:gas": "forge fmt && forge test --gas-report",
+    "coverage": "forge fmt && forge coverage",
+    "lint": "forge fmt --check",
+    "lint:fix": "forge fmt",
+    "clean": "forge clean"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.6.2"
+  "keywords": [
+    "defi",
+    "donations",
+    "philanthropy",
+    "erc-4626",
+    "yield",
+    "smart-contracts",
+    "foundry"
+  ],
+  "author": "GIVE Labs",
+  "license": "MIT",
+  "packageManager": "pnpm@10.6.2",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "devDependencies": {
+    "@openzeppelin/contracts": "^5.3.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts-upgradeable": "^5.0.0"
+  }
 }
