@@ -41,7 +41,7 @@ import "../types/GiveTypes.sol";
  *      - NGO_MANAGER can add, remove, update NGOs and propose current NGO changes
  *      - DONATION_RECORDER (vault contracts) can record donations
  *      - GUARDIAN can pause/unpause registry
- *      - DEFAULT_ADMIN can emergency set current NGO (bypassing timelock)
+ *      - PROTOCOL_ADMIN can emergency set current NGO (bypassing timelock)
  *      - ROLE_UPGRADER can upgrade contract
  */
 contract NGORegistry is Initializable, UUPSUpgradeable, Pausable {
@@ -431,7 +431,7 @@ contract NGORegistry is Initializable, UUPSUpgradeable, Pausable {
 
     /**
      * @notice Emergency override to immediately set current NGO
-     * @dev Only callable by protocol admin (DEFAULT_ADMIN_ROLE).
+     * @dev Only callable by PROTOCOL_ADMIN role.
      *      Bypasses timelock for emergency situations.
      *      Clears any pending timelock operation.
      * @param ngo New NGO address (must be approved unless address(0))
