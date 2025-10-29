@@ -22,18 +22,35 @@ contract MockAavePool {
     // STORAGE
     // ============================================
 
-    /// @notice Maps asset address to aToken address
-    mapping(address => address) public aTokens;
-
     /// @notice Maps asset address to reserve data
     mapping(address => ReserveData) public reserves;
 
-    /// @notice Reserve configuration data
+    /// @notice Maps asset address to internal state
+    mapping(address => ReserveState) internal _reserveStates;
+
+    /// @notice Reserve configuration data (simplified from Aave V3)
     struct ReserveData {
+        uint256 configuration;
+        uint128 liquidityIndex;
+        uint128 currentLiquidityRate;
+        uint128 variableBorrowIndex;
+        uint128 currentVariableBorrowRate;
+        uint128 currentStableBorrowRate;
+        uint40 lastUpdateTimestamp;
+        uint16 id;
+        address aTokenAddress;
+        address stableDebtTokenAddress;
+        address variableDebtTokenAddress;
+        address interestRateStrategyAddress;
+        uint128 accruedToTreasury;
+        uint128 unbacked;
+        uint128 isolationModeTotalDebt;
+    }
+
+    /// @notice Internal reserve tracking
+    struct ReserveState {
         bool initialized;
         uint8 decimals;
-        uint256 liquidityIndex; // Scaled by 1e27 (ray)
-        uint256 lastUpdateTimestamp;
     }
 
     // ============================================
@@ -41,8 +58,6 @@ contract MockAavePool {
     // ============================================
 
     uint256 private constant RAY = 1e27;
-    uint256 private constant SECONDS_PER_YEAR = 365 days;
-    uint256 private constant DEFAULT_RATE = 5e25; // 5% APY in ray units
 
     // ============================================
     // EVENTS
@@ -62,17 +77,29 @@ contract MockAavePool {
      * @param decimals Asset decimals
      */
     function initReserve(address asset, uint8 decimals) external {
-        require(!reserves[asset].initialized, "Reserve already initialized");
+        require(!_reserveStates[asset].initialized, "Reserve already initialized");
 
         // Deploy mock aToken
         MockAToken aToken = new MockAToken(asset, decimals, address(this));
 
-        aTokens[asset] = address(aToken);
+        _reserveStates[asset] = ReserveState({initialized: true, decimals: decimals});
+
         reserves[asset] = ReserveData({
-            initialized: true,
-            decimals: decimals,
-            liquidityIndex: RAY, // Start at 1.0
-            lastUpdateTimestamp: block.timestamp
+            configuration: 0,
+            liquidityIndex: uint128(RAY), // Start at 1.0
+            currentLiquidityRate: 0, // No automatic accrual
+            variableBorrowIndex: uint128(RAY),
+            currentVariableBorrowRate: 0,
+            currentStableBorrowRate: 0,
+            lastUpdateTimestamp: uint40(block.timestamp),
+            id: 0,
+            aTokenAddress: address(aToken),
+            stableDebtTokenAddress: address(0),
+            variableDebtTokenAddress: address(0),
+            interestRateStrategyAddress: address(0),
+            accruedToTreasury: 0,
+            unbacked: 0,
+            isolationModeTotalDebt: 0
         });
 
         emit ReserveInitialized(asset, address(aToken));
@@ -92,8 +119,8 @@ contract MockAavePool {
     function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external {
         referralCode; // Silence unused warning
 
-        ReserveData storage reserve = reserves[asset];
-        require(reserve.initialized, "Reserve not initialized");
+        ReserveState storage state = _reserveStates[asset];
+        require(state.initialized, "Reserve not initialized");
 
         // Update liquidity index (simulate interest accrual)
         _updateLiquidityIndex(asset);
@@ -102,7 +129,7 @@ contract MockAavePool {
         IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
 
         // Mint aTokens 1:1 (scaled by liquidity index internally)
-        MockAToken(aTokens[asset]).mint(onBehalfOf, amount);
+        MockAToken(reserves[asset].aTokenAddress).mint(onBehalfOf, amount);
 
         emit Supply(asset, onBehalfOf, amount);
     }
@@ -115,13 +142,13 @@ contract MockAavePool {
      * @return Actual amount withdrawn
      */
     function withdraw(address asset, uint256 amount, address to) external returns (uint256) {
-        ReserveData storage reserve = reserves[asset];
-        require(reserve.initialized, "Reserve not initialized");
+        ReserveState storage state = _reserveStates[asset];
+        require(state.initialized, "Reserve not initialized");
 
         // Update liquidity index
         _updateLiquidityIndex(asset);
 
-        MockAToken aToken = MockAToken(aTokens[asset]);
+        MockAToken aToken = MockAToken(reserves[asset].aTokenAddress);
 
         // Handle max withdrawal
         uint256 userBalance = aToken.balanceOf(msg.sender);
@@ -145,22 +172,18 @@ contract MockAavePool {
     // ============================================
 
     /**
-     * @notice Update liquidity index to simulate interest accrual
+     * @notice Update liquidity index timestamp
+     * @dev In this mock, index only grows via accrueYield (which deposits real assets)
+     *      Automatic interest accrual would cause withdrawals to fail due to insufficient backing
      * @param asset Asset to update
      */
     function _updateLiquidityIndex(address asset) internal {
         ReserveData storage reserve = reserves[asset];
 
-        if (reserve.lastUpdateTimestamp == block.timestamp) {
-            return; // Already updated this block
+        // Just update timestamp - index only grows when yield is manually injected via accrueYield
+        if (reserve.lastUpdateTimestamp != block.timestamp) {
+            reserve.lastUpdateTimestamp = uint40(block.timestamp);
         }
-
-        uint256 timeDelta = block.timestamp - reserve.lastUpdateTimestamp;
-
-        // Simple linear interest: index increases by DEFAULT_RATE per second
-        uint256 interest = (reserve.liquidityIndex * DEFAULT_RATE * timeDelta) / (RAY * SECONDS_PER_YEAR);
-        reserve.liquidityIndex += interest;
-        reserve.lastUpdateTimestamp = block.timestamp;
     }
 
     // ============================================
@@ -168,12 +191,47 @@ contract MockAavePool {
     // ============================================
 
     /**
+     * @notice Get reserve data (Aave V3 interface)
+     * @param asset Asset address
+     * @return Reserve data struct
+     */
+    function getReserveData(address asset) external view returns (ReserveData memory) {
+        return reserves[asset];
+    }
+
+    /**
      * @notice Get reserve normalized income (liquidity index)
      * @param asset Asset address
      * @return Liquidity index scaled by 1e27
      */
     function getReserveNormalizedIncome(address asset) external view returns (uint256) {
-        return reserves[asset].liquidityIndex;
+        return uint256(reserves[asset].liquidityIndex);
+    }
+
+    /**
+     * @notice Helper to manually inject yield for testing
+     * @dev Simulates Aave interest accrual by increasing the liquidity index
+     * @param asset Asset address
+     * @param yieldAmount Amount of yield to inject (caller must approve pool first)
+     */
+    function accrueYield(address asset, uint256 yieldAmount) external {
+        ReserveState storage state = _reserveStates[asset];
+        require(state.initialized, "Reserve not initialized");
+        require(yieldAmount > 0, "Zero yield");
+
+        // Transfer actual underlying tokens into the pool
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), yieldAmount);
+
+        MockAToken aToken = MockAToken(reserves[asset].aTokenAddress);
+        uint256 scaledSupply = aToken.scaledTotalSupply();
+        if (scaledSupply == 0) return;
+
+        // Increase liquidity index proportionally to yield
+        // All holders' balances grow proportionally via: balance = scaledBalance * index / RAY
+        uint256 oldIndex = uint256(reserves[asset].liquidityIndex);
+        uint256 deltaIndex = (yieldAmount * RAY) / scaledSupply;
+        reserves[asset].liquidityIndex = uint128(oldIndex + deltaIndex);
+        reserves[asset].lastUpdateTimestamp = uint40(block.timestamp);
     }
 }
 
@@ -196,8 +254,9 @@ contract MockAToken {
     address public immutable UNDERLYING_ASSET;
     address public immutable POOL;
 
-    mapping(address => uint256) private _balances;
-    uint256 private _totalSupply;
+    mapping(address => uint256) private _scaledBalances;
+    uint256 private _scaledTotalSupply;
+    uint256 private constant RAY = 1e27;
 
     // ============================================
     // EVENTS
@@ -226,11 +285,21 @@ contract MockAToken {
     // ============================================
 
     function totalSupply() external view returns (uint256) {
-        return _totalSupply;
+        uint256 index = MockAavePool(POOL).getReserveNormalizedIncome(UNDERLYING_ASSET);
+        return (_scaledTotalSupply * index) / RAY;
     }
 
     function balanceOf(address account) external view returns (uint256) {
-        return _balances[account];
+        uint256 index = MockAavePool(POOL).getReserveNormalizedIncome(UNDERLYING_ASSET);
+        return (_scaledBalances[account] * index) / RAY;
+    }
+
+    function scaledBalanceOf(address account) external view returns (uint256) {
+        return _scaledBalances[account];
+    }
+
+    function scaledTotalSupply() external view returns (uint256) {
+        return _scaledTotalSupply;
     }
 
     function transfer(address to, uint256 amount) external returns (bool) {
@@ -245,12 +314,18 @@ contract MockAToken {
     /**
      * @notice Mint aTokens (only callable by pool)
      * @param account Account to mint to
-     * @param amount Amount to mint
+     * @param amount Amount to mint (in asset terms)
      */
     function mint(address account, uint256 amount) external {
         require(msg.sender == POOL, "Only pool can mint");
-        _balances[account] += amount;
-        _totalSupply += amount;
+
+        // Convert amount to scaled balance using current index
+        uint256 index = MockAavePool(POOL).getReserveNormalizedIncome(UNDERLYING_ASSET);
+        uint256 scaledAmount = (amount * RAY) / index;
+
+        _scaledBalances[account] += scaledAmount;
+        _scaledTotalSupply += scaledAmount;
+
         emit Mint(account, amount);
         emit Transfer(address(0), account, amount);
     }
@@ -258,13 +333,20 @@ contract MockAToken {
     /**
      * @notice Burn aTokens (only callable by pool)
      * @param account Account to burn from
-     * @param amount Amount to burn
+     * @param amount Amount to burn (in asset terms)
      */
     function burn(address account, uint256 amount) external {
         require(msg.sender == POOL, "Only pool can burn");
-        require(_balances[account] >= amount, "Insufficient balance");
-        _balances[account] -= amount;
-        _totalSupply -= amount;
+
+        // Convert amount to scaled balance using current index
+        uint256 index = MockAavePool(POOL).getReserveNormalizedIncome(UNDERLYING_ASSET);
+        uint256 scaledAmount = (amount * RAY) / index;
+
+        require(_scaledBalances[account] >= scaledAmount, "Insufficient balance");
+
+        _scaledBalances[account] -= scaledAmount;
+        _scaledTotalSupply -= scaledAmount;
+
         emit Burn(account, amount);
         emit Transfer(account, address(0), amount);
     }
@@ -276,10 +358,15 @@ contract MockAToken {
     function _transfer(address from, address to, uint256 amount) internal {
         require(from != address(0), "Transfer from zero address");
         require(to != address(0), "Transfer to zero address");
-        require(_balances[from] >= amount, "Insufficient balance");
 
-        _balances[from] -= amount;
-        _balances[to] += amount;
+        // Convert amount to scaled balance
+        uint256 index = MockAavePool(POOL).getReserveNormalizedIncome(UNDERLYING_ASSET);
+        uint256 scaledAmount = (amount * RAY) / index;
+
+        require(_scaledBalances[from] >= scaledAmount, "Insufficient balance");
+
+        _scaledBalances[from] -= scaledAmount;
+        _scaledBalances[to] += scaledAmount;
 
         emit Transfer(from, to, amount);
     }
