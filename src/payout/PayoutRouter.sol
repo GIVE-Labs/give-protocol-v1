@@ -94,6 +94,7 @@ contract PayoutRouter is
     // ============================================
 
     function initialize(
+        address admin_,
         address acl_,
         address campaignRegistry_,
         address feeRecipient_,
@@ -101,7 +102,7 @@ contract PayoutRouter is
         uint256 feeBps_
     ) external initializer {
         if (
-            acl_ == address(0) || campaignRegistry_ == address(0) || feeRecipient_ == address(0)
+            admin_ == address(0) || acl_ == address(0) || campaignRegistry_ == address(0) || feeRecipient_ == address(0)
                 || protocolTreasury_ == address(0)
         ) {
             revert GiveErrors.ZeroAddress();
@@ -112,6 +113,9 @@ contract PayoutRouter is
         __ReentrancyGuard_init();
         __Pausable_init();
         __UUPSUpgradeable_init();
+
+        // Grant DEFAULT_ADMIN_ROLE to deployer for local AccessControl management
+        _grantRole(DEFAULT_ADMIN_ROLE, admin_);
 
         _setACLManager(acl_);
 

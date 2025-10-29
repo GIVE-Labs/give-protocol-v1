@@ -136,12 +136,12 @@ contract CampaignVault4626 is GiveVault4626 {
      * @return campaignId Campaign identifier
      * @return strategyId Strategy identifier
      * @return lockProfile Lock profile identifier
-     * @return factory Factory address that created this vault
+     * @return factoryAddr Factory address that created this vault
      */
     function getCampaignMetadata()
         external
         view
-        returns (bytes32 campaignId, bytes32 strategyId, bytes32 lockProfile, address factory)
+        returns (bytes32 campaignId, bytes32 strategyId, bytes32 lockProfile, address factoryAddr)
     {
         GiveTypes.CampaignVaultMeta storage meta = StorageLib.ensureCampaignVault(vaultId());
         return (meta.campaignId, meta.strategyId, meta.lockProfile, meta.factory);
