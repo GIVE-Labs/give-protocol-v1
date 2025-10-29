@@ -178,7 +178,7 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
         address admin_,
         address acl_,
         address implementation_
-    ) external initializer {
+    ) public virtual initializer {
         if (admin_ == address(0) || acl_ == address(0) || implementation_ == address(0)) {
             revert ZeroAddress();
         }
