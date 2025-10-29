@@ -130,7 +130,7 @@ contract TestContract09_StrategyManager is Test {
         vm.deal(emergency, 100 ether);
 
         // Deploy mock asset
-        usdc = new MockERC20("USD Coin", "USDC");
+        usdc = new MockERC20("USD Coin", "USDC", 6);
 
         // Deploy ACL Manager
         aclManager = new ACLManager();

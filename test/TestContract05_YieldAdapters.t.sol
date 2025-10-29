@@ -24,7 +24,7 @@ contract TestContract05_YieldAdapters is Test {
     bytes32 public constant ADAPTER_ID = keccak256("TEST_ADAPTER");
 
     function setUp() public {
-        asset = new MockERC20("Test Token", "TEST");
+        asset = new MockERC20("Test Token", "TEST", 18);
         vault = makeAddr("vault");
         admin = makeAddr("admin");
         yieldManager = makeAddr("yieldManager");

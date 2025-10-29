@@ -99,7 +99,7 @@ contract TestContract06_PayoutRouter is Test {
         vm.deal(mockVault, 100 ether);
 
         // Deploy mock contracts
-        usdc = new MockERC20("USD Coin", "USDC");
+        usdc = new MockERC20("USD Coin", "USDC", 6);
         mockACL = new MockACL();
         mockCampaignRegistry = new MockCampaignRegistry();
 
