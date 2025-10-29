@@ -19,10 +19,16 @@ import "../types/GiveTypes.sol";
  *      Key Features:
  *      - Dynamic strategy registration by STRATEGY_ADMIN
  *      - Lifecycle management (Active/FadingOut/Deprecated)
- *      - Strategy-vault binding tracking
+ *      - Strategy-vault binding tracking (deduplicated list)
  *      - Risk tier classification
  *      - TVL limits per strategy
  *      - UUPS upgradeability
+ *
+ *      Vault Tracking:
+ *      - Vault list per strategy is deduplicated (no duplicates allowed)
+ *      - Use registerStrategyVault() to link a vault to a strategy
+ *      - Use unregisterStrategyVault() to unlink a vault from a strategy
+ *      - Mapping tracks registration state to prevent duplicates
  *
  *      Security Model:
  *      - Only STRATEGY_ADMIN can register, update, or change strategy status
@@ -52,6 +58,12 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable {
      * @dev Used for iteration and discovery. Order is insertion order.
      */
     bytes32[] private _strategyIds;
+
+    /**
+     * @notice Tracks whether a vault is registered to a strategy
+     * @dev Prevents duplicate vault registrations. Maps strategyId => vault => isRegistered.
+     */
+    mapping(bytes32 => mapping(address => bool)) private _vaultRegistered;
 
     // ============================================
     // STRUCTS
@@ -114,6 +126,13 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable {
      */
     event StrategyVaultLinked(bytes32 indexed strategyId, address indexed vault);
 
+    /**
+     * @notice Emitted when a vault is unlinked from a strategy
+     * @param strategyId Strategy identifier
+     * @param vault Vault address removed from this strategy
+     */
+    event StrategyVaultUnlinked(bytes32 indexed strategyId, address indexed vault);
+
     // ============================================
     // ERRORS
     // ============================================
@@ -132,6 +151,12 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable {
 
     /// @notice Invalid strategy configuration parameters
     error InvalidStrategyConfig(bytes32 id);
+
+    /// @notice Vault already registered to strategy
+    error VaultAlreadyRegistered(bytes32 strategyId, address vault);
+
+    /// @notice Vault not registered to strategy
+    error VaultNotRegistered(bytes32 strategyId, address vault);
 
     // ============================================
     // MODIFIERS
@@ -258,6 +283,7 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable {
      * @dev Only callable by STRATEGY_ADMIN.
      *      Tracks which vaults are using which strategies.
      *      Same strategy can be used by multiple vaults (reusability).
+     *      Prevents duplicate registrations.
      * @param strategyId Strategy identifier
      * @param vault Vault address to link
      */
@@ -270,10 +296,61 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable {
         GiveTypes.StrategyConfig storage cfg = StorageLib.strategy(strategyId);
         if (!cfg.exists) revert StrategyNotFound(strategyId);
 
+        // Prevent duplicate registrations
+        if (_vaultRegistered[strategyId][vault]) {
+            revert VaultAlreadyRegistered(strategyId, vault);
+        }
+
         address[] storage vaults = StorageLib.strategyVaults(strategyId);
         vaults.push(vault);
+        _vaultRegistered[strategyId][vault] = true;
 
         emit StrategyVaultLinked(strategyId, vault);
+    }
+
+    /**
+     * @notice Unlinks a vault from a strategy
+     * @dev Only callable by STRATEGY_ADMIN.
+     *      Removes vault from strategy's vault list using swap-and-pop pattern.
+     *      Updates tracking mapping to allow future re-registration if needed.
+     * @param strategyId Strategy identifier
+     * @param vault Vault address to unlink
+     */
+    function unregisterStrategyVault(bytes32 strategyId, address vault)
+        external
+        onlyRole(aclManager.strategyAdminRole())
+    {
+        if (vault == address(0)) revert ZeroAddress();
+
+        GiveTypes.StrategyConfig storage cfg = StorageLib.strategy(strategyId);
+        if (!cfg.exists) revert StrategyNotFound(strategyId);
+
+        // Ensure vault is actually registered
+        if (!_vaultRegistered[strategyId][vault]) {
+            revert VaultNotRegistered(strategyId, vault);
+        }
+
+        address[] storage vaults = StorageLib.strategyVaults(strategyId);
+
+        // Find and remove vault using swap-and-pop pattern
+        bool removed;
+        for (uint256 i = 0; i < vaults.length; i++) {
+            if (vaults[i] == vault) {
+                // Swap with last element and pop
+                vaults[i] = vaults[vaults.length - 1];
+                vaults.pop();
+                removed = true;
+                break;
+            }
+        }
+
+        // Ensure removal actually occurred to keep array and mapping in sync
+        if (!removed) revert VaultNotRegistered(strategyId, vault);
+
+        // Update tracking mapping
+        _vaultRegistered[strategyId][vault] = false;
+
+        emit StrategyVaultUnlinked(strategyId, vault);
     }
 
     // ============================================
@@ -304,7 +381,8 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable {
 
     /**
      * @notice Returns all vaults using a specific strategy
-     * @dev Returns a copy of the storage array to avoid external mutation
+     * @dev Returns a copy of the storage array to avoid external mutation.
+     *      List is deduplicated - each vault appears at most once.
      * @param strategyId Strategy identifier
      * @return Array of vault addresses
      */

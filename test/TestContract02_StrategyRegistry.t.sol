@@ -51,6 +51,7 @@ contract TestContract02_StrategyRegistry is Test {
         bytes32 indexed id, GiveTypes.StrategyStatus previousStatus, GiveTypes.StrategyStatus newStatus
     );
     event StrategyVaultLinked(bytes32 indexed strategyId, address indexed vault);
+    event StrategyVaultUnlinked(bytes32 indexed strategyId, address indexed vault);
 
     function setUp() public {
         superAdmin = address(this);
@@ -592,6 +593,222 @@ contract TestContract02_StrategyRegistry is Test {
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSelector(StrategyRegistry.Unauthorized.selector, ROLE_STRATEGY_ADMIN, user1));
         strategyRegistry.registerStrategyVault(STRATEGY_ID_1, vault1);
+    }
+
+    /**
+     * @dev Test non-admin cannot update strategy
+     */
+    function test_Contract02_Case25_nonAdminCannotUpdateStrategy() public {
+        vm.prank(strategyAdmin);
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_ID_1,
+                adapter: adapter1,
+                riskTier: RISK_LOW,
+                maxTvl: 1_000_000e6,
+                metadataHash: METADATA_HASH
+            })
+        );
+
+        vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSelector(StrategyRegistry.Unauthorized.selector, ROLE_STRATEGY_ADMIN, user1));
+        strategyRegistry.updateStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_ID_1,
+                adapter: adapter2,
+                riskTier: RISK_MEDIUM,
+                maxTvl: 2_000_000e6,
+                metadataHash: METADATA_HASH
+            })
+        );
+    }
+
+    /**
+     * @dev Test setting status on non-existent strategy reverts
+     */
+    function test_Contract02_Case26_setStatusOnNonExistentStrategyReverts() public {
+        vm.prank(strategyAdmin);
+        vm.expectRevert(abi.encodeWithSelector(StrategyRegistry.StrategyNotFound.selector, STRATEGY_ID_1));
+        strategyRegistry.setStrategyStatus(STRATEGY_ID_1, GiveTypes.StrategyStatus.FadingOut);
+    }
+
+    // ============================================
+    // VAULT DEDUPLICATION & UNREGISTRATION TESTS
+    // ============================================
+
+    /**
+     * @dev Test duplicate vault registration is prevented
+     */
+    function test_Contract02_Case27_duplicateVaultRegistrationReverts() public {
+        vm.startPrank(strategyAdmin);
+
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_ID_1,
+                adapter: adapter1,
+                riskTier: RISK_LOW,
+                maxTvl: 1_000_000e6,
+                metadataHash: METADATA_HASH
+            })
+        );
+
+        // First registration should succeed
+        strategyRegistry.registerStrategyVault(STRATEGY_ID_1, vault1);
+
+        // Duplicate registration should revert
+        vm.expectRevert(abi.encodeWithSelector(StrategyRegistry.VaultAlreadyRegistered.selector, STRATEGY_ID_1, vault1));
+        strategyRegistry.registerStrategyVault(STRATEGY_ID_1, vault1);
+
+        vm.stopPrank();
+    }
+
+    /**
+     * @dev Test successful vault unregistration
+     */
+    function test_Contract02_Case28_unregisterVaultSucceeds() public {
+        vm.startPrank(strategyAdmin);
+
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_ID_1,
+                adapter: adapter1,
+                riskTier: RISK_LOW,
+                maxTvl: 1_000_000e6,
+                metadataHash: METADATA_HASH
+            })
+        );
+
+        // Register two vaults
+        strategyRegistry.registerStrategyVault(STRATEGY_ID_1, vault1);
+        strategyRegistry.registerStrategyVault(STRATEGY_ID_1, vault2);
+
+        address[] memory vaultsBefore = strategyRegistry.getStrategyVaults(STRATEGY_ID_1);
+        assertEq(vaultsBefore.length, 2, "Should have 2 vaults");
+
+        // Unregister vault1
+        vm.expectEmit(true, true, false, false);
+        emit StrategyVaultUnlinked(STRATEGY_ID_1, vault1);
+        strategyRegistry.unregisterStrategyVault(STRATEGY_ID_1, vault1);
+
+        address[] memory vaultsAfter = strategyRegistry.getStrategyVaults(STRATEGY_ID_1);
+        assertEq(vaultsAfter.length, 1, "Should have 1 vault");
+        assertEq(vaultsAfter[0], vault2, "Remaining vault should be vault2");
+
+        vm.stopPrank();
+    }
+
+    /**
+     * @dev Test unregistering non-existent vault reverts
+     */
+    function test_Contract02_Case29_unregisterNonExistentVaultReverts() public {
+        vm.startPrank(strategyAdmin);
+
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_ID_1,
+                adapter: adapter1,
+                riskTier: RISK_LOW,
+                maxTvl: 1_000_000e6,
+                metadataHash: METADATA_HASH
+            })
+        );
+
+        // Try to unregister vault that was never registered
+        vm.expectRevert(abi.encodeWithSelector(StrategyRegistry.VaultNotRegistered.selector, STRATEGY_ID_1, vault1));
+        strategyRegistry.unregisterStrategyVault(STRATEGY_ID_1, vault1);
+
+        vm.stopPrank();
+    }
+
+    /**
+     * @dev Test unauthorized unregistration reverts
+     */
+    function test_Contract02_Case30_nonAdminCannotUnregisterVault() public {
+        vm.prank(strategyAdmin);
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_ID_1,
+                adapter: adapter1,
+                riskTier: RISK_LOW,
+                maxTvl: 1_000_000e6,
+                metadataHash: METADATA_HASH
+            })
+        );
+
+        vm.prank(strategyAdmin);
+        strategyRegistry.registerStrategyVault(STRATEGY_ID_1, vault1);
+
+        vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSelector(StrategyRegistry.Unauthorized.selector, ROLE_STRATEGY_ADMIN, user1));
+        strategyRegistry.unregisterStrategyVault(STRATEGY_ID_1, vault1);
+    }
+
+    /**
+     * @dev Test re-registration after unregistration succeeds
+     */
+    function test_Contract02_Case31_reRegistrationAfterUnregisterSucceeds() public {
+        vm.startPrank(strategyAdmin);
+
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_ID_1,
+                adapter: adapter1,
+                riskTier: RISK_LOW,
+                maxTvl: 1_000_000e6,
+                metadataHash: METADATA_HASH
+            })
+        );
+
+        // Register vault
+        strategyRegistry.registerStrategyVault(STRATEGY_ID_1, vault1);
+
+        // Unregister vault
+        strategyRegistry.unregisterStrategyVault(STRATEGY_ID_1, vault1);
+
+        address[] memory vaultsAfterUnregister = strategyRegistry.getStrategyVaults(STRATEGY_ID_1);
+        assertEq(vaultsAfterUnregister.length, 0, "Should have 0 vaults after unregistration");
+
+        // Re-register should succeed
+        vm.expectEmit(true, true, false, false);
+        emit StrategyVaultLinked(STRATEGY_ID_1, vault1);
+        strategyRegistry.registerStrategyVault(STRATEGY_ID_1, vault1);
+
+        address[] memory vaultsAfterReRegister = strategyRegistry.getStrategyVaults(STRATEGY_ID_1);
+        assertEq(vaultsAfterReRegister.length, 1, "Should have 1 vault after re-registration");
+        assertEq(vaultsAfterReRegister[0], vault1, "Should be vault1");
+
+        vm.stopPrank();
+    }
+
+    /**
+     * @dev Test unregister with zero address reverts
+     */
+    function test_Contract02_Case32_unregisterZeroAddressReverts() public {
+        vm.startPrank(strategyAdmin);
+
+        strategyRegistry.registerStrategy(
+            StrategyRegistry.StrategyInput({
+                id: STRATEGY_ID_1,
+                adapter: adapter1,
+                riskTier: RISK_LOW,
+                maxTvl: 1_000_000e6,
+                metadataHash: METADATA_HASH
+            })
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(StrategyRegistry.ZeroAddress.selector));
+        strategyRegistry.unregisterStrategyVault(STRATEGY_ID_1, address(0));
+
+        vm.stopPrank();
+    }
+
+    /**
+     * @dev Test unregister from non-existent strategy reverts
+     */
+    function test_Contract02_Case33_unregisterFromNonExistentStrategyReverts() public {
+        vm.prank(strategyAdmin);
+        vm.expectRevert(abi.encodeWithSelector(StrategyRegistry.StrategyNotFound.selector, STRATEGY_ID_1));
+        strategyRegistry.unregisterStrategyVault(STRATEGY_ID_1, vault1);
     }
 
     // ============================================
