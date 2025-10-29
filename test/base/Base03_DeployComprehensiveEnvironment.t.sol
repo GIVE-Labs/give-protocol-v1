@@ -7,6 +7,7 @@ import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
 import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
 import {CampaignVault4626} from "../../src/vault/CampaignVault4626.sol";
 import {MockERC20} from "../../src/mocks/MockERC20.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title Base03_DeployComprehensiveEnvironment
@@ -208,26 +209,85 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
 
         vm.startPrank(campaignAdmin);
 
-        // Approve Climate campaign
+        // Approve campaigns (approval alone doesn't deploy vaults)
         campaignRegistry.approveCampaign(campaignClimateId, campaignAdmin); // curator
-        climateVault = campaignRegistry.getCampaign(campaignClimateId).vault;
-        assertTrue(climateVault != address(0), "Climate vault should be deployed");
-
-        // Approve Education campaign
         campaignRegistry.approveCampaign(campaignEducationId, campaignAdmin); // curator
-        educationVault = campaignRegistry.getCampaign(campaignEducationId).vault;
-        assertTrue(educationVault != address(0), "Education vault should be deployed");
-
-        // Approve Medical campaign
         campaignRegistry.approveCampaign(campaignMedicalId, campaignAdmin); // curator
-        medicalVault = campaignRegistry.getCampaign(campaignMedicalId).vault;
-        assertTrue(medicalVault != address(0), "Medical vault should be deployed");
 
+        vm.stopPrank();
+
+        // Deploy campaign vault implementation
+        CampaignVault4626 vaultImpl = new CampaignVault4626();
+        // Use risk ID from Base02 (already defined as public variable)
+
+        // Deploy Climate vault as UUPS proxy
+        bytes memory climateInitData = abi.encodeWithSelector(
+            CampaignVault4626.initialize.selector,
+            address(usdc), // asset
+            "Climate Action Vault", // name
+            "cvUSDC", // symbol
+            admin, // admin
+            address(aclManager), // acl
+            address(vaultImpl), // implementation
+            address(this) // factory (test contract)
+        );
+        ERC1967Proxy climateProxy = new ERC1967Proxy(address(vaultImpl), climateInitData);
+        climateVault = address(climateProxy);
+        // Call initializeCampaign as factory (test contract), not as campaignAdmin
+        CampaignVault4626(payable(climateVault))
+            .initializeCampaign(campaignClimateId, aaveUsdcStrategyId, conservativeRiskId);
+
+        // Deploy Education vault as UUPS proxy
+        bytes memory educationInitData = abi.encodeWithSelector(
+            CampaignVault4626.initialize.selector,
+            address(usdc),
+            "Education Fund Vault",
+            "evUSDC",
+            admin,
+            address(aclManager),
+            address(vaultImpl),
+            address(this)
+        );
+        ERC1967Proxy educationProxy = new ERC1967Proxy(address(vaultImpl), educationInitData);
+        educationVault = address(educationProxy);
+        CampaignVault4626(payable(educationVault))
+            .initializeCampaign(campaignEducationId, aaveUsdcStrategyId, conservativeRiskId);
+
+        // Deploy Medical vault as UUPS proxy
+        bytes memory medicalInitData = abi.encodeWithSelector(
+            CampaignVault4626.initialize.selector,
+            address(dai),
+            "Medical Aid Vault",
+            "mvDAI",
+            admin,
+            address(aclManager),
+            address(vaultImpl),
+            address(this)
+        );
+        ERC1967Proxy medicalProxy = new ERC1967Proxy(address(vaultImpl), medicalInitData);
+        medicalVault = address(medicalProxy);
+        CampaignVault4626(payable(medicalVault))
+            .initializeCampaign(campaignMedicalId, compoundingDaiStrategyId, conservativeRiskId);
+
+        // Assign vaults to campaigns (requires CAMPAIGN_ADMIN_ROLE)
+        vm.startPrank(campaignAdmin);
+        campaignRegistry.setCampaignVault(campaignClimateId, climateVault, conservativeRiskId);
+        campaignRegistry.setCampaignVault(campaignEducationId, educationVault, conservativeRiskId);
+        campaignRegistry.setCampaignVault(campaignMedicalId, medicalVault, conservativeRiskId);
         vm.stopPrank();
 
         emit log_named_address("Climate campaign vault at", climateVault);
         emit log_named_address("Education campaign vault at", educationVault);
         emit log_named_address("Medical campaign vault at", medicalVault);
+
+        // Register vaults with their strategies (populates strategy vault list)
+        vm.startPrank(strategyAdmin);
+        strategyRegistry.registerStrategyVault(aaveUsdcStrategyId, climateVault);
+        strategyRegistry.registerStrategyVault(aaveUsdcStrategyId, educationVault);
+        strategyRegistry.registerStrategyVault(compoundingDaiStrategyId, medicalVault);
+        vm.stopPrank();
+
+        emit log_string("Campaign vaults registered with strategies");
 
         // ========================================
         // STEP 5: Register Campaign Vaults with PayoutRouter
@@ -257,14 +317,16 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
         // STEP 6: Fund Adapters with Initial Liquidity
         // ========================================
 
-        // Fund Aave pool with USDC liquidity for lending
+        // Fund Aave pool with USDC liquidity for initial deposits
         usdc.mint(address(aavePool), 1_000_000e6);
 
-        // Simulate yield generation in adapters
-        usdc.mint(address(aaveUsdcAdapter), 10_000e6); // $10k yield
-        dai.mint(address(compoundingDaiAdapter), 10_000e18); // $10k yield
+        // Note: Yield injection should be done via accrueYield() in actual tests
+        // For example: usdc.mint(address(this), 10_000e6);
+        //              usdc.approve(address(aavePool), 10_000e6);
+        //              aavePool.accrueYield(address(usdc), 10_000e6);
+        // This properly increases the liquidity index and backs withdrawals with real assets
 
-        emit log_string("Adapters funded with initial liquidity");
+        emit log_string("Aave pool funded with initial liquidity");
 
         // ========================================
         // STEP 7: Set Up Initial Stakes for Governance
