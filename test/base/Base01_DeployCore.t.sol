@@ -139,6 +139,10 @@ contract Base01_DeployCore is Test {
         vm.stopPrank();
 
         emit log_string("ACL roles configured");
+        emit log_named_address("admin", admin);
+        emit log_named_address("strategyAdmin", strategyAdmin);
+        emit log_named_address("protocolAdmin", protocolAdmin);
+        emit log_named_address("campaignAdmin", campaignAdmin);
 
         // ========================================
         // STEP 4: Deploy Test Assets
