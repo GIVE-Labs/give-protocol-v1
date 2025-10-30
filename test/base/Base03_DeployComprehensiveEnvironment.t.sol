@@ -6,6 +6,8 @@ import {GiveTypes} from "../../src/types/GiveTypes.sol";
 import {CampaignRegistry} from "../../src/registry/CampaignRegistry.sol";
 import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
 import {CampaignVault4626} from "../../src/vault/CampaignVault4626.sol";
+import {AaveAdapter} from "../../src/adapters/AaveAdapter.sol";
+import {CompoundingAdapter} from "../../src/adapters/kinds/CompoundingAdapter.sol";
 import {MockERC20} from "../../src/mocks/MockERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -42,6 +44,11 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
     address public climateVault;
     address public educationVault;
     address public medicalVault;
+
+    // Campaign-specific adapters (bound to campaign vaults)
+    AaveAdapter public climateAaveAdapter;
+    AaveAdapter public educationAaveAdapter;
+    CompoundingAdapter public medicalCompoundingAdapter;
 
     // ============================================================
     // TEST SCENARIOS
@@ -274,6 +281,11 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
         campaignRegistry.setCampaignVault(campaignClimateId, climateVault, conservativeRiskId);
         campaignRegistry.setCampaignVault(campaignEducationId, educationVault, conservativeRiskId);
         campaignRegistry.setCampaignVault(campaignMedicalId, medicalVault, conservativeRiskId);
+
+        // FIX: Set campaigns to Active status (they're at Approved after approval)
+        campaignRegistry.setCampaignStatus(campaignClimateId, GiveTypes.CampaignStatus.Active);
+        campaignRegistry.setCampaignStatus(campaignEducationId, GiveTypes.CampaignStatus.Active);
+        campaignRegistry.setCampaignStatus(campaignMedicalId, GiveTypes.CampaignStatus.Active);
         vm.stopPrank();
 
         emit log_named_address("Climate campaign vault at", climateVault);
@@ -290,13 +302,44 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
         emit log_string("Campaign vaults registered with strategies");
 
         // ========================================
-        // STEP 5: Register Campaign Vaults with PayoutRouter
+        // STEP 5: Deploy Campaign-Specific Adapters
+        // ========================================
+
+        // FIX: Deploy adapters bound to campaign vaults (not Base02's usdcVault)
+        // Climate vault adapter (Aave USDC)
+        // AaveAdapter constructor: (address _asset, address _vault, address _aavePool, address _admin)
+        climateAaveAdapter = new AaveAdapter(
+            address(usdc), // asset
+            climateVault, // vault
+            address(aavePool), // aave pool
+            admin // admin
+        );
+
+        // Education vault adapter (Aave USDC)
+        educationAaveAdapter = new AaveAdapter(
+            address(usdc), // asset
+            educationVault, // vault
+            address(aavePool), // aave pool
+            admin // admin
+        );
+
+        // Medical vault adapter (Compounding DAI)
+        // CompoundingAdapter constructor: (bytes32 adapterId, address asset, address vault)
+        medicalCompoundingAdapter = new CompoundingAdapter(
+            keccak256("adapter.medical.compounding"), // adapterId
+            address(dai), // asset
+            medicalVault // vault
+        );
+
+        emit log_string("Campaign-specific adapters deployed");
+
+        // ========================================
+        // STEP 6: Register Campaign Vaults with PayoutRouter
         // ========================================
 
         // Grant VAULT_MANAGER_ROLE to campaignAdmin
         bytes32 VAULT_MANAGER_ROLE = payoutRouter.VAULT_MANAGER_ROLE();
         vm.startPrank(admin);
-        aclManager.createRole(VAULT_MANAGER_ROLE, admin);
         aclManager.grantRole(VAULT_MANAGER_ROLE, campaignAdmin);
         vm.stopPrank();
 
@@ -307,14 +350,33 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
         payoutRouter.registerCampaignVault(educationVault, campaignEducationId);
         payoutRouter.registerCampaignVault(medicalVault, campaignMedicalId);
 
+        // FIX: Authorize vaults as callers on PayoutRouter (required for share updates)
+        payoutRouter.setAuthorizedCaller(climateVault, true);
+        payoutRouter.setAuthorizedCaller(educationVault, true);
+        payoutRouter.setAuthorizedCaller(medicalVault, true);
+
         // Note: Valid allocations [50%, 75%, 100%] are set during PayoutRouter initialization
 
         vm.stopPrank();
 
         emit log_string("Campaign vaults registered with PayoutRouter");
 
+        // FIX: Set donation router on each vault (required for PayoutRouter tracking)
+        bytes32 VAULT_MANAGER_ROLE_VAULT = keccak256("VAULT_MANAGER_ROLE");
+        vm.startPrank(admin);
+        aclManager.grantRole(VAULT_MANAGER_ROLE_VAULT, admin);
+        vm.stopPrank();
+
+        vm.startPrank(admin);
+        CampaignVault4626(payable(climateVault)).setDonationRouter(address(payoutRouter));
+        CampaignVault4626(payable(educationVault)).setDonationRouter(address(payoutRouter));
+        CampaignVault4626(payable(medicalVault)).setDonationRouter(address(payoutRouter));
+        vm.stopPrank();
+
+        emit log_string("Donation routers configured on campaign vaults");
+
         // ========================================
-        // STEP 6: Fund Adapters with Initial Liquidity
+        // STEP 7: Fund Adapters with Initial Liquidity
         // ========================================
 
         // Fund Aave pool with USDC liquidity for initial deposits
@@ -329,7 +391,7 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
         emit log_string("Aave pool funded with initial liquidity");
 
         // ========================================
-        // STEP 7: Set Up Initial Stakes for Governance
+        // STEP 8: Set Up Initial Stakes for Governance
         // ========================================
 
         // NOTE: Staking is done by depositing into campaign vaults (donating)
@@ -439,6 +501,7 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
 
     /**
      * @notice Helper to schedule a checkpoint for a campaign
+     * @dev FIX: Uses campaignAdmin (CAMPAIGN_ADMIN_ROLE required)
      * @param campaign Campaign ID
      * @param windowStart Voting window start timestamp
      * @param windowEnd Voting window end timestamp
@@ -449,7 +512,7 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
         internal
         returns (uint256 checkpointIndex)
     {
-        vm.prank(campaignCreator);
+        vm.prank(campaignAdmin); // FIX: Use campaignAdmin, not campaignCreator
         CampaignRegistry.CheckpointInput memory input = CampaignRegistry.CheckpointInput({
             windowStart: windowStart, windowEnd: windowEnd, executionDeadline: windowEnd + 7 days, quorumBps: quorumBps
         });
@@ -470,11 +533,12 @@ contract Base03_DeployComprehensiveEnvironment is Base02_DeployVaultsAndAdapters
 
     /**
      * @notice Helper to finalize a checkpoint
+     * @dev FIX: Uses campaignAdmin (CAMPAIGN_ADMIN_ROLE required)
      * @param campaign Campaign ID
      * @param checkpointIndex Checkpoint index
      */
     function _finalizeCheckpoint(bytes32 campaign, uint256 checkpointIndex) internal {
-        vm.prank(checkpointCouncil);
+        vm.prank(campaignAdmin); // FIX: Use campaignAdmin, not checkpointCouncil
         campaignRegistry.finalizeCheckpoint(campaign, checkpointIndex);
     }
 }
