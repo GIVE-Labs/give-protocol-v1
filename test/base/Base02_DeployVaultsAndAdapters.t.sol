@@ -211,6 +211,12 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
 
         emit log_named_address("USDC Vault deployed at", address(usdcVault));
 
+        // Grant VAULT_MANAGER_ROLE to protocolCore so it can call syncRiskLimits during assignVaultRisk
+        vm.startPrank(admin);
+        bytes32 vaultManagerRole = usdcVault.VAULT_MANAGER_ROLE();
+        usdcVault.grantRole(vaultManagerRole, address(protocolCore));
+        vm.stopPrank();
+
         // Register USDC vault in protocol core
         vm.prank(protocolAdmin);
         protocolCore.configureVault(
@@ -253,6 +259,11 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
         daiVault = GiveVault4626(payable(address(daiVaultProxy)));
 
         emit log_named_address("DAI Vault deployed at", address(daiVault));
+
+        // Grant VAULT_MANAGER_ROLE to protocolCore so it can call syncRiskLimits during assignVaultRisk
+        vm.startPrank(admin);
+        daiVault.grantRole(daiVault.VAULT_MANAGER_ROLE(), address(protocolCore));
+        vm.stopPrank();
 
         // Register DAI vault in protocol core
         vm.prank(protocolAdmin);
@@ -362,6 +373,32 @@ contract Base02_DeployVaultsAndAdapters is Base01_DeployCore {
         usdcVaultManager.grantRole(usdcVaultManager.STRATEGY_MANAGER_ROLE(), strategyAdmin);
         daiVaultManager.grantRole(daiVaultManager.STRATEGY_MANAGER_ROLE(), strategyAdmin);
         vm.stopPrank();
+
+        // Ensure ACL manager knows about VAULT_MANAGER_ROLE and delegate to managers
+        vm.startPrank(admin);
+        bytes32 VAULT_MANAGER_ROLE_HASH = usdcVault.VAULT_MANAGER_ROLE();
+        if (!aclManager.roleExists(VAULT_MANAGER_ROLE_HASH)) {
+            aclManager.createRole(VAULT_MANAGER_ROLE_HASH, admin);
+        }
+        aclManager.grantRole(VAULT_MANAGER_ROLE_HASH, address(usdcVaultManager));
+        aclManager.grantRole(VAULT_MANAGER_ROLE_HASH, address(daiVaultManager));
+        aclManager.grantRole(VAULT_MANAGER_ROLE_HASH, strategyAdmin);
+        aclManager.grantRole(VAULT_MANAGER_ROLE_HASH, protocolAdmin);
+        // Grant VAULT_MANAGER_ROLE to StrategyManager contracts locally so they can call setActiveAdapter()
+        usdcVault.grantRole(usdcVault.VAULT_MANAGER_ROLE(), address(usdcVaultManager));
+        daiVault.grantRole(daiVault.VAULT_MANAGER_ROLE(), address(daiVaultManager));
+        vm.stopPrank();
+
+        // Sanity: confirm managers hold the role locally
+        assertTrue(
+            usdcVault.hasRole(usdcVault.VAULT_MANAGER_ROLE(), address(usdcVaultManager)),
+            "USDC manager missing vault role"
+        );
+        assertTrue(
+            daiVault.hasRole(daiVault.VAULT_MANAGER_ROLE(), address(daiVaultManager)), "DAI manager missing vault role"
+        );
+
+        emit log_string("StrategyManagers granted VAULT_MANAGER_ROLE on vaults");
 
         // ========================================
         // STEP 10: Configure Vault Adapters
