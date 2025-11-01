@@ -656,35 +656,41 @@ contract TestAction01_CampaignLifecycle is Base03_DeployComprehensiveEnvironment
         // Resolve campaign ID for this vault to record governance stake
         bytes32 cid = payoutRouter.getVaultCampaign(vault);
 
-        // Donor1 deposits
-        vm.startPrank(donor1);
-        IERC20(asset).approve(vault, amount1);
-        v.deposit(amount1, donor1);
-        vm.stopPrank();
+        // Donor1 deposits (only if non-zero)
+        if (amount1 > 0) {
+            vm.startPrank(donor1);
+            IERC20(asset).approve(vault, amount1);
+            v.deposit(amount1, donor1);
+            vm.stopPrank();
 
-        // Record stake for governance voting power (curator action)
-        vm.prank(admin); // admin holds CAMPAIGN_CURATOR by default
-        campaignRegistry.recordStakeDeposit(cid, donor1, amount1);
+            // Record stake for governance voting power (curator action)
+            vm.prank(admin); // admin holds CAMPAIGN_CURATOR by default
+            campaignRegistry.recordStakeDeposit(cid, donor1, amount1);
+        }
 
-        // Donor2 deposits
-        vm.startPrank(donor2);
-        IERC20(asset).approve(vault, amount2);
-        v.deposit(amount2, donor2);
-        vm.stopPrank();
+        // Donor2 deposits (only if non-zero)
+        if (amount2 > 0) {
+            vm.startPrank(donor2);
+            IERC20(asset).approve(vault, amount2);
+            v.deposit(amount2, donor2);
+            vm.stopPrank();
 
-        // Record stake for donor2
-        vm.prank(admin);
-        campaignRegistry.recordStakeDeposit(cid, donor2, amount2);
+            // Record stake for donor2
+            vm.prank(admin);
+            campaignRegistry.recordStakeDeposit(cid, donor2, amount2);
+        }
 
-        // Donor3 deposits
-        vm.startPrank(donor3);
-        IERC20(asset).approve(vault, amount3);
-        v.deposit(amount3, donor3);
-        vm.stopPrank();
+        // Donor3 deposits (only if non-zero)
+        if (amount3 > 0) {
+            vm.startPrank(donor3);
+            IERC20(asset).approve(vault, amount3);
+            v.deposit(amount3, donor3);
+            vm.stopPrank();
 
-        // Record stake for donor3
-        vm.prank(admin);
-        campaignRegistry.recordStakeDeposit(cid, donor3, amount3);
+            // Record stake for donor3
+            vm.prank(admin);
+            campaignRegistry.recordStakeDeposit(cid, donor3, amount3);
+        }
     }
 
     /**
@@ -731,4 +737,167 @@ contract TestAction01_CampaignLifecycle is Base03_DeployComprehensiveEnvironment
 
     // Note: _scheduleCheckpoint, _voteOnCheckpoint, and _finalizeCheckpoint
     // are inherited from Base03_DeployComprehensiveEnvironment
+
+    // ============================================================
+    // TEST 13: EMERGENCY PAUSE, GRACE, AND USER EMERGENCY WITHDRAW
+    // ============================================================
+
+    function test_13_EmergencyPauseGraceAndUserWithdrawal() public {
+        emit log_string("\n=== TEST 13: Emergency Pause, Grace, and User Emergency Withdrawal ===");
+
+        // Setup: donors deposit and allocate to adapter
+        _depositDonors(climateVault, DONOR1_INITIAL_DEPOSIT, DONOR2_INITIAL_DEPOSIT, DONOR3_INITIAL_DEPOSIT);
+        _allocateVaultToAdapter(climateVault, address(climateAaveAdapter));
+
+        GiveVault4626 vault = GiveVault4626(payable(climateVault));
+
+        // Emergency pause by admin (PAUSER_ROLE on vault)
+        vm.prank(admin);
+        vault.emergencyPause();
+
+        // Before grace expires, emergencyWithdrawUser should revert
+        uint256 donor1Shares = vault.balanceOf(donor1);
+        vm.startPrank(donor1);
+        vm.expectRevert(GiveVault4626.GracePeriodActive.selector);
+        vault.emergencyWithdrawUser(donor1Shares / 2, donor1, donor1);
+        vm.stopPrank();
+
+        // After grace period, owner can withdraw without allowance
+        vm.warp(block.timestamp + vault.EMERGENCY_GRACE_PERIOD() + 1);
+
+        uint256 donor1SharesBefore = vault.balanceOf(donor1);
+        vm.startPrank(donor1);
+        uint256 assetsWithdrawn = vault.emergencyWithdrawUser(donor1SharesBefore / 2, donor1, donor1);
+        vm.stopPrank();
+
+        emit log_named_uint("Assets withdrawn (emergency)", assetsWithdrawn);
+
+        // Verify shares reduced
+        assertEq(vault.balanceOf(donor1), donor1SharesBefore - (donor1SharesBefore / 2), "Half shares should remain");
+
+        emit log_string("[OK] Emergency flow honored grace and allowed owner withdrawal");
+    }
+
+    // ============================================================
+    // TEST 14: FAILED CHECKPOINT HALTS PAYOUTS, SUCCESS RESUMES
+    // ============================================================
+
+    function test_14_CheckpointFailureHaltsAndSuccessResumesPayouts() public {
+        emit log_string("\n=== TEST 14: Failed Checkpoint Halts Payouts; Success Resumes ===");
+
+        // Setup: deposits, allocation, and yield generation
+        _depositDonors(climateVault, DONOR1_INITIAL_DEPOSIT, DONOR2_INITIAL_DEPOSIT, DONOR3_INITIAL_DEPOSIT);
+        _allocateVaultToAdapter(climateVault, address(climateAaveAdapter));
+        _injectYieldToAave(address(usdc), YIELD_INJECTION_AMOUNT);
+
+        GiveVault4626 vault = GiveVault4626(payable(climateVault));
+
+        // Schedule a checkpoint with high quorum to force failure
+        uint64 start = uint64(block.timestamp + 2);
+        uint64 end = start + 2 days;
+        uint256 idxFail = _scheduleCheckpoint(campaignClimateId, start, end, 9000);
+
+        // Open voting
+        vm.warp(start + 1 hours);
+        vm.prank(checkpointCouncil);
+        campaignRegistry.updateCheckpointStatus(campaignClimateId, idxFail, GiveTypes.CheckpointStatus.Voting);
+
+        // Cast insufficient votes so quorum not met
+        _voteOnCheckpoint(donor1, campaignClimateId, idxFail, false);
+
+        // Finalize after window ends
+        vm.warp(end + 1);
+        _finalizeCheckpoint(campaignClimateId, idxFail);
+
+        // With payouts halted, harvest should revert at router distribution
+        vm.expectRevert(GiveErrors.OperationNotAllowed.selector);
+        vault.harvest();
+
+        // Schedule a new checkpoint with low quorum to resume payouts
+        start = uint64(block.timestamp + 2);
+        end = start + 2 days;
+        uint256 idxSuccess = _scheduleCheckpoint(campaignClimateId, start, end, 1000);
+
+        vm.warp(start + 1 hours);
+        vm.prank(checkpointCouncil);
+        campaignRegistry.updateCheckpointStatus(campaignClimateId, idxSuccess, GiveTypes.CheckpointStatus.Voting);
+
+        _voteOnCheckpoint(donor1, campaignClimateId, idxSuccess, true);
+        _voteOnCheckpoint(donor2, campaignClimateId, idxSuccess, true);
+
+        vm.warp(end + 1);
+        _finalizeCheckpoint(campaignClimateId, idxSuccess);
+
+        // Inject fresh yield and harvest; should succeed now
+        _injectYieldToAave(address(usdc), 1_000e6);
+        (uint256 profit,) = vault.harvest();
+        assertGt(profit, 0, "Harvest should succeed after payouts resume");
+
+        emit log_string("[OK] Payouts halted on failure and resumed on success");
+    }
+
+    // ============================================================
+    // TEST 15: ROUTER FEE TIMELOCK (INCREASE) AND INSTANT DECREASE
+    // ============================================================
+
+    function test_15_PayoutRouterFeeTimelockAndInstantDecrease() public {
+        emit log_string("\n=== TEST 15: Router Fee Timelock and Instant Decrease ===");
+
+        // Grant FEE_MANAGER_ROLE to admin on router
+        bytes32 FEE_MANAGER_ROLE = payoutRouter.FEE_MANAGER_ROLE();
+        vm.prank(admin);
+        payoutRouter.grantRole(FEE_MANAGER_ROLE, admin);
+
+        uint256 currentFee = payoutRouter.feeBps();
+        address currentRecipient = payoutRouter.feeRecipient();
+
+        // Propose an increase (timelocked)
+        vm.prank(admin);
+        payoutRouter.proposeFeeChange(currentRecipient, currentFee + 50); // +0.5%
+
+        // Not executable yet
+        vm.expectRevert();
+        payoutRouter.executeFeeChange(0);
+
+        // Warp past timelock and execute
+        vm.warp(block.timestamp + payoutRouter.FEE_CHANGE_DELAY() + 1);
+        payoutRouter.executeFeeChange(0);
+        assertEq(payoutRouter.feeBps(), currentFee + 50, "Fee increased after timelock");
+
+        // Propose a decrease (instant)
+        vm.prank(admin);
+        payoutRouter.proposeFeeChange(currentRecipient, currentFee);
+        assertEq(payoutRouter.feeBps(), currentFee, "Fee decreased instantly");
+
+        emit log_string("[OK] Fee timelock increase and instant decrease validated");
+    }
+
+    // ============================================================
+    // TEST 16: VAULT UUPS UPGRADE AUTHORIZATION AND STATE INVARIANTS
+    // ============================================================
+
+    function test_16_VaultUpgradeAuthorizationAndStatePreserved() public {
+        emit log_string("\n=== TEST 16: Vault UUPS Upgrade Authorization and State Preserved ===");
+
+        // Setup: deposits to have non-zero state
+        _depositDonors(climateVault, DONOR1_INITIAL_DEPOSIT, 0, 0);
+        GiveVault4626 vault = GiveVault4626(payable(climateVault));
+        uint256 supplyBefore = vault.totalSupply();
+        address assetBefore = address(vault.asset());
+
+        // Non-upgrader should not be able to upgrade (UUPS v5 uses upgradeToAndCall)
+        CampaignVault4626 newImpl = new CampaignVault4626();
+        vm.expectRevert();
+        vault.upgradeToAndCall(address(newImpl), "");
+
+        // Upgrader can upgrade
+        vm.prank(upgrader);
+        vault.upgradeToAndCall(address(newImpl), "");
+
+        // Invariants hold
+        assertEq(vault.totalSupply(), supplyBefore, "Supply invariant");
+        assertEq(address(vault.asset()), assetBefore, "Asset invariant");
+
+        emit log_string("[OK] UUPS upgrade gated and state preserved");
+    }
 }
