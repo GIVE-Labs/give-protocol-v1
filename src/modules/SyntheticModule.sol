@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-// import "../synthetic/SyntheticLogic.sol"; // TODO: Phase 9 - Synthetic assets (optional)
+// import "../synthetic/SyntheticLogic.sol"; // DEFERRED: Phase 9 - Synthetic assets not implemented in v1
 import "../storage/StorageLib.sol";
 
 /**
@@ -97,10 +97,11 @@ library SyntheticModule {
      * @param cfg Synthetic asset configuration parameters
      */
     function configure(bytes32 syntheticId, SyntheticConfigInput memory cfg) internal {
-        // PHASE 9 TODO: Uncomment when SyntheticLogic and src/synthetic/* are implemented
-        // SyntheticLogic.configure(syntheticId, cfg.proxy, cfg.asset);
+        // DEFERRED: Phase 9 - Synthetic assets not implemented in v1
+        // Product decision: Non-transferrable positions only
+        // Future implementation would call: SyntheticLogic.configure(syntheticId, cfg.proxy, cfg.asset);
 
-        // STUB: Only emit event to maintain interface
+        // STUB: Only emit event to maintain interface compatibility
         emit SyntheticConfigured(syntheticId, cfg.proxy, cfg.asset);
     }
 }

@@ -12,7 +12,7 @@ import "../modules/DonationModule.sol";
 import "../modules/SyntheticModule.sol";
 import "../modules/RiskModule.sol";
 import "../modules/EmergencyModule.sol";
-// import "../synthetic/SyntheticLogic.sol"; // TODO: Phase 9
+// import "../synthetic/SyntheticLogic.sol"; // DEFERRED: Phase 9 - Synthetic assets not implemented in v1
 import "../vault/GiveVault4626.sol";
 
 /**
@@ -301,7 +301,8 @@ contract GiveProtocolCore is Initializable, UUPSUpgradeable {
         SyntheticModule.configure(syntheticId, cfg);
     }
 
-    // TODO: Phase 9 - Uncomment when SyntheticLogic is implemented
+    // DEFERRED: Phase 9 - Synthetic assets not implemented in v1
+    // Product decision: Non-transferrable positions only
     /*
     function mintSynthetic(bytes32 syntheticId, address account, uint256 amount)
         external
