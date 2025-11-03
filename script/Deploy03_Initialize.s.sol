@@ -1,0 +1,265 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {BaseDeployment} from "./base/BaseDeployment.sol";
+import {ACLManager} from "../src/governance/ACLManager.sol";
+import {StrategyRegistry} from "../src/registry/StrategyRegistry.sol";
+import {StrategyManager} from "../src/manager/StrategyManager.sol";
+import {AaveAdapter} from "../src/adapters/AaveAdapter.sol";
+import {GiveTypes} from "../src/types/GiveTypes.sol";
+import {console} from "forge-std/console.sol";
+
+/**
+ * @title Deploy03_Initialize
+ * @author GIVE Labs
+ * @notice Phase 3: Initialize protocol with roles, strategies, and configuration
+ * @dev Performs:
+ *      - Grant all protocol roles to admin addresses
+ *      - Register initial strategies (Aave USDC)
+ *      - Approve and activate adapters on vaults
+ *      - Configure protocol parameters
+ *
+ * Prerequisites:
+ *   - Deploy01_Infrastructure must be completed
+ *   - Deploy02_VaultsAndAdapters must be completed
+ *
+ * Usage:
+ *   forge script script/Deploy03_Initialize.s.sol:Deploy03_Initialize \
+ *     --rpc-url $BASE_SEPOLIA_RPC_URL \
+ *     --private-key $PRIVATE_KEY \
+ *     --broadcast
+ */
+contract Deploy03_Initialize is BaseDeployment {
+    // Loaded contracts
+    ACLManager public aclManager;
+    StrategyRegistry public strategyRegistry;
+    StrategyManager public usdcStrategyManager;
+    AaveAdapter public aaveUsdcAdapter;
+
+    // Admin addresses
+    address public admin;
+    address public protocolAdmin;
+    address public strategyAdmin;
+    address public campaignAdmin;
+    address public campaignCreator;
+    address public checkpointCouncil;
+
+    // Canonical role hashes
+    bytes32 public ROLE_UPGRADER;
+    bytes32 public ROLE_PROTOCOL_ADMIN;
+    bytes32 public ROLE_STRATEGY_ADMIN;
+    bytes32 public ROLE_CAMPAIGN_ADMIN;
+    bytes32 public ROLE_CAMPAIGN_CREATOR;
+    bytes32 public ROLE_CAMPAIGN_CURATOR;
+    bytes32 public ROLE_CHECKPOINT_COUNCIL;
+
+    // Strategy IDs
+    bytes32 public aaveUsdcStrategyId;
+
+    function setUp() public override {
+        super.setUp();
+
+        // Load deployed contracts
+        aclManager = ACLManager(loadDeployment("ACLManager"));
+        strategyRegistry = StrategyRegistry(loadDeployment("StrategyRegistry"));
+        usdcStrategyManager = StrategyManager(loadDeployment("USDCStrategyManager"));
+
+        // Try to load Aave adapter (may not exist if Aave not available)
+        aaveUsdcAdapter = AaveAdapter(loadDeploymentOrZero("AaveUSDCAdapter"));
+
+        // Load admin addresses from env
+        admin = requireEnvAddress("ADMIN_ADDRESS");
+        protocolAdmin = requireEnvAddress("PROTOCOL_ADMIN_ADDRESS");
+        strategyAdmin = requireEnvAddress("STRATEGY_ADMIN_ADDRESS");
+        campaignAdmin = requireEnvAddress("CAMPAIGN_ADMIN_ADDRESS");
+        campaignCreator = getEnvAddressOr("CAMPAIGN_CREATOR_ADDRESS", campaignAdmin);
+        checkpointCouncil = getEnvAddressOr("CHECKPOINT_COUNCIL_ADDRESS", campaignAdmin);
+
+        // Define canonical role hashes
+        ROLE_UPGRADER = keccak256("ROLE_UPGRADER");
+        ROLE_PROTOCOL_ADMIN = keccak256("ROLE_PROTOCOL_ADMIN");
+        ROLE_STRATEGY_ADMIN = keccak256("ROLE_STRATEGY_ADMIN");
+        ROLE_CAMPAIGN_ADMIN = keccak256("ROLE_CAMPAIGN_ADMIN");
+        ROLE_CAMPAIGN_CREATOR = keccak256("ROLE_CAMPAIGN_CREATOR");
+        ROLE_CAMPAIGN_CURATOR = keccak256("ROLE_CAMPAIGN_CURATOR");
+        ROLE_CHECKPOINT_COUNCIL = keccak256("ROLE_CHECKPOINT_COUNCIL");
+
+        // Strategy IDs
+        aaveUsdcStrategyId = keccak256("strategy.aave.usdc");
+
+        console.log("Loaded ACLManager:", address(aclManager));
+        console.log("Admin:", admin);
+        console.log("Protocol Admin:", protocolAdmin);
+        console.log("Strategy Admin:", strategyAdmin);
+        console.log("Campaign Admin:", campaignAdmin);
+    }
+
+    function run() public {
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+
+        startBroadcastWith(deployerPrivateKey);
+
+        // ========================================
+        // STEP 1: Create Canonical Roles
+        // ========================================
+        console.log("\n[1/5] Creating Canonical Protocol Roles...");
+
+        // Create roles (only if not already created)
+        if (!aclManager.roleExists(ROLE_UPGRADER)) {
+            aclManager.createRole(ROLE_UPGRADER, admin);
+            console.log("Created ROLE_UPGRADER");
+        }
+
+        if (!aclManager.roleExists(ROLE_PROTOCOL_ADMIN)) {
+            aclManager.createRole(ROLE_PROTOCOL_ADMIN, admin);
+            console.log("Created ROLE_PROTOCOL_ADMIN");
+        }
+
+        if (!aclManager.roleExists(ROLE_STRATEGY_ADMIN)) {
+            aclManager.createRole(ROLE_STRATEGY_ADMIN, admin);
+            console.log("Created ROLE_STRATEGY_ADMIN");
+        }
+
+        if (!aclManager.roleExists(ROLE_CAMPAIGN_ADMIN)) {
+            aclManager.createRole(ROLE_CAMPAIGN_ADMIN, admin);
+            console.log("Created ROLE_CAMPAIGN_ADMIN");
+        }
+
+        if (!aclManager.roleExists(ROLE_CAMPAIGN_CREATOR)) {
+            aclManager.createRole(ROLE_CAMPAIGN_CREATOR, campaignAdmin);
+            console.log("Created ROLE_CAMPAIGN_CREATOR");
+        }
+
+        if (!aclManager.roleExists(ROLE_CAMPAIGN_CURATOR)) {
+            aclManager.createRole(ROLE_CAMPAIGN_CURATOR, campaignAdmin);
+            console.log("Created ROLE_CAMPAIGN_CURATOR");
+        }
+
+        if (!aclManager.roleExists(ROLE_CHECKPOINT_COUNCIL)) {
+            aclManager.createRole(ROLE_CHECKPOINT_COUNCIL, campaignAdmin);
+            console.log("Created ROLE_CHECKPOINT_COUNCIL");
+        }
+
+        console.log("All canonical roles created");
+
+        // ========================================
+        // STEP 2: Grant Roles to Admin Addresses
+        // ========================================
+        console.log("\n[2/5] Granting Roles to Admins...");
+
+        // Grant upgrader role
+        aclManager.grantRole(ROLE_UPGRADER, admin);
+        console.log("Granted ROLE_UPGRADER to admin");
+
+        // Grant protocol admin role
+        aclManager.grantRole(ROLE_PROTOCOL_ADMIN, protocolAdmin);
+        console.log("Granted ROLE_PROTOCOL_ADMIN to protocolAdmin");
+
+        // Grant strategy admin role
+        aclManager.grantRole(ROLE_STRATEGY_ADMIN, strategyAdmin);
+        console.log("Granted ROLE_STRATEGY_ADMIN to strategyAdmin");
+
+        // Grant campaign roles
+        aclManager.grantRole(ROLE_CAMPAIGN_ADMIN, campaignAdmin);
+        aclManager.grantRole(ROLE_CAMPAIGN_CREATOR, campaignCreator);
+        aclManager.grantRole(ROLE_CAMPAIGN_CURATOR, campaignAdmin);
+        aclManager.grantRole(ROLE_CHECKPOINT_COUNCIL, checkpointCouncil);
+
+        console.log("Granted ROLE_CAMPAIGN_ADMIN to campaignAdmin");
+        console.log("Granted ROLE_CAMPAIGN_CREATOR to campaignCreator");
+        console.log("Granted ROLE_CAMPAIGN_CURATOR to campaignAdmin");
+        console.log("Granted ROLE_CHECKPOINT_COUNCIL to checkpointCouncil");
+
+        // ========================================
+        // STEP 3: Register Initial Strategies
+        // ========================================
+        console.log("\n[3/5] Registering Initial Strategies...");
+
+        if (address(aaveUsdcAdapter) != address(0)) {
+            // Register Aave USDC strategy
+            strategyRegistry.registerStrategy(
+                StrategyRegistry.StrategyInput({
+                    id: aaveUsdcStrategyId,
+                    adapter: address(aaveUsdcAdapter),
+                    riskTier: keccak256("LOW"),
+                    maxTvl: 10_000_000e6, // $10M max TVL
+                    metadataHash: keccak256("ipfs://QmAaveUSDC")
+                })
+            );
+
+            console.log("Registered Aave USDC Strategy");
+            console.log("Strategy ID:", vm.toString(aaveUsdcStrategyId));
+            console.log("Adapter:", address(aaveUsdcAdapter));
+
+            saveDeploymentBytes32("AaveUSDCStrategyId", aaveUsdcStrategyId);
+        } else {
+            console.log("Skipping Aave strategy (adapter not deployed)");
+        }
+
+        // ========================================
+        // STEP 4: Approve & Activate Adapters
+        // ========================================
+        console.log("\n[4/5] Approving and Activating Adapters...");
+
+        if (address(aaveUsdcAdapter) != address(0)) {
+            // Approve Aave adapter on USDC vault
+            usdcStrategyManager.setAdapterApproval(address(aaveUsdcAdapter), true);
+            console.log("Approved Aave adapter on USDC vault");
+
+            // Set as active adapter
+            usdcStrategyManager.setActiveAdapter(address(aaveUsdcAdapter));
+            console.log("Activated Aave adapter on USDC vault");
+
+            // Enable auto-rebalance
+            bool autoRebalance = getEnvBoolOr("AUTO_REBALANCE_ENABLED", true);
+            usdcStrategyManager.setAutoRebalanceEnabled(autoRebalance);
+            console.log("Auto-rebalance enabled:", autoRebalance);
+
+            // Set rebalance interval
+            uint256 rebalanceInterval = getEnvUintOr("REBALANCE_INTERVAL", 1 days);
+            usdcStrategyManager.setRebalanceInterval(rebalanceInterval);
+            console.log("Rebalance interval:", rebalanceInterval, "seconds");
+        }
+
+        // ========================================
+        // STEP 5: Save Configuration
+        // ========================================
+        console.log("\n[5/5] Saving Final Configuration...");
+
+        // Save role hashes for future reference
+        saveDeploymentBytes32("ROLE_UPGRADER", ROLE_UPGRADER);
+        saveDeploymentBytes32("ROLE_PROTOCOL_ADMIN", ROLE_PROTOCOL_ADMIN);
+        saveDeploymentBytes32("ROLE_STRATEGY_ADMIN", ROLE_STRATEGY_ADMIN);
+        saveDeploymentBytes32("ROLE_CAMPAIGN_ADMIN", ROLE_CAMPAIGN_ADMIN);
+        saveDeploymentBytes32("ROLE_CAMPAIGN_CREATOR", ROLE_CAMPAIGN_CREATOR);
+        saveDeploymentBytes32("ROLE_CAMPAIGN_CURATOR", ROLE_CAMPAIGN_CURATOR);
+        saveDeploymentBytes32("ROLE_CHECKPOINT_COUNCIL", ROLE_CHECKPOINT_COUNCIL);
+
+        // Save admin addresses
+        saveDeployment("AdminAddress", admin);
+        saveDeployment("ProtocolAdminAddress", protocolAdmin);
+        saveDeployment("StrategyAdminAddress", strategyAdmin);
+        saveDeployment("CampaignAdminAddress", campaignAdmin);
+
+        console.log("Configuration saved");
+
+        // ========================================
+        // Finalize
+        // ========================================
+        finalizeDeployment();
+
+        stopBroadcastIf();
+
+        console.log("\n========================================");
+        console.log("Phase 3 Complete: Protocol Initialized");
+        console.log("========================================");
+        console.log("All roles granted");
+        if (address(aaveUsdcAdapter) != address(0)) {
+            console.log("Aave USDC strategy registered and activated");
+        }
+        console.log("\nProtocol deployment complete!");
+        console.log("Next steps:");
+        console.log("1. Use operations scripts to add campaigns");
+        console.log("2. Use Upgrade.s.sol for contract upgrades");
+    }
+}
