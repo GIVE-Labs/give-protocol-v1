@@ -6,7 +6,6 @@ import {ACLManager} from "../src/governance/ACLManager.sol";
 import {StrategyRegistry} from "../src/registry/StrategyRegistry.sol";
 import {StrategyManager} from "../src/manager/StrategyManager.sol";
 import {AaveAdapter} from "../src/adapters/AaveAdapter.sol";
-import {GiveTypes} from "../src/types/GiveTypes.sol";
 import {console} from "forge-std/console.sol";
 
 /**

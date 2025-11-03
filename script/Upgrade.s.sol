@@ -8,9 +8,6 @@ import {StrategyRegistry} from "../src/registry/StrategyRegistry.sol";
 import {CampaignRegistry} from "../src/registry/CampaignRegistry.sol";
 import {NGORegistry} from "../src/donation/NGORegistry.sol";
 import {PayoutRouter} from "../src/payout/PayoutRouter.sol";
-import {GiveVault4626} from "../src/vault/GiveVault4626.sol";
-import {CampaignVault4626} from "../src/vault/CampaignVault4626.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {console} from "forge-std/console.sol";
 
 /**

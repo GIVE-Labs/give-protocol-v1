@@ -93,6 +93,8 @@ contract AddCampaign is BaseDeployment {
                 targetStake: targetStake,
                 minStake: minStake,
                 fundraisingStart: uint64(block.timestamp),
+                // Safe: timestamp + duration fits in uint64 (valid until year 584 billion)
+                // forge-lint: disable-next-line(unsafe-typecast)
                 fundraisingEnd: uint64(block.timestamp + fundraisingDuration)
             })
         );

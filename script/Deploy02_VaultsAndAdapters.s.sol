@@ -14,7 +14,6 @@ import {CampaignRegistry} from "../src/registry/CampaignRegistry.sol";
 import {PayoutRouter} from "../src/payout/PayoutRouter.sol";
 import {VaultModule} from "../src/modules/VaultModule.sol";
 import {RiskModule} from "../src/modules/RiskModule.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {console} from "forge-std/console.sol";
 
