@@ -275,14 +275,6 @@ forge snapshot
 
 ---
 
-## Documentation
-
-- **CLAUDE.md** - AI assistant guidance and protocol overview
-- **script/DEPLOYMENT_GUIDE.md** - Detailed deployment instructions
-- **AGENTS.md** - Agent coordination guidelines
-
----
-
 ## License
 
 MIT
