@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import "../interfaces/IYieldAdapter.sol";
 import "../interfaces/IWETH.sol";
@@ -332,7 +333,7 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
         if (bps > MAX_CASH_BUFFER_BPS) revert CashBufferTooHigh();
         GiveTypes.VaultConfig storage cfg = _vaultConfig();
         uint256 old = cfg.cashBufferBps;
-        cfg.cashBufferBps = uint16(bps);
+        cfg.cashBufferBps = SafeCast.toUint16(bps);
         emit CashBufferUpdated(old, bps);
     }
 
@@ -340,7 +341,7 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
         if (bps > MAX_SLIPPAGE_BPS) revert InvalidSlippageBps();
         GiveTypes.VaultConfig storage cfg = _vaultConfig();
         uint256 old = cfg.slippageBps;
-        cfg.slippageBps = uint16(bps);
+        cfg.slippageBps = SafeCast.toUint16(bps);
         emit SlippageUpdated(old, bps);
     }
 
@@ -348,7 +349,7 @@ contract GiveVault4626 is ERC4626Upgradeable, UUPSUpgradeable, VaultTokenBase {
         if (bps > MAX_LOSS_BPS) revert InvalidMaxLossBps();
         GiveTypes.VaultConfig storage cfg = _vaultConfig();
         uint256 old = cfg.maxLossBps;
-        cfg.maxLossBps = uint16(bps);
+        cfg.maxLossBps = SafeCast.toUint16(bps);
         emit MaxLossUpdated(old, bps);
     }
 

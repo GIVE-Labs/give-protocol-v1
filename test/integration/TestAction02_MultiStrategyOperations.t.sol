@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import {Base03_DeployComprehensiveEnvironment} from "../base/Base03_DeployComprehensiveEnvironment.t.sol";
 import {GiveTypes} from "../../src/types/GiveTypes.sol";
-import {GiveErrors} from "../../src/utils/GiveErrors.sol";
 import {CampaignVault4626} from "../../src/vault/CampaignVault4626.sol";
 import {GiveVault4626} from "../../src/vault/GiveVault4626.sol";
 import {MockYieldAdapter} from "../../src/mocks/MockYieldAdapter.sol";
@@ -11,7 +10,6 @@ import {CompoundingAdapter} from "../../src/adapters/kinds/CompoundingAdapter.so
 import {StrategyManager} from "../../src/manager/StrategyManager.sol";
 import {StrategyRegistry} from "../../src/registry/StrategyRegistry.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IYieldAdapter} from "../../src/interfaces/IYieldAdapter.sol";
 
 /**
  * @title TestAction02_MultiStrategyOperations

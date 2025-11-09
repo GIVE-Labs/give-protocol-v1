@@ -97,7 +97,7 @@ contract TestContract05_YieldAdapters is Test {
 
         // Transfer to adapter then invest
         vm.prank(vault);
-        asset.transfer(address(adapter), 100 ether);
+        require(asset.transfer(address(adapter), 100 ether), "Transfer failed");
 
         vm.prank(vault);
         adapter.invest(100 ether);
@@ -116,7 +116,7 @@ contract TestContract05_YieldAdapters is Test {
 
         // Transfer and invest
         vm.prank(vault);
-        asset.transfer(address(adapter), 100 ether);
+        require(asset.transfer(address(adapter), 100 ether), "Transfer failed");
 
         vm.prank(vault);
         adapter.invest(100 ether);
@@ -175,7 +175,7 @@ contract TestContract05_YieldAdapters is Test {
 
         // Transfer tokens to adapter
         vm.prank(vault);
-        asset.transfer(address(adapter), 100 ether);
+        require(asset.transfer(address(adapter), 100 ether), "Transfer failed");
 
         vm.prank(vault);
         adapter.invest(100 ether);
@@ -198,7 +198,7 @@ contract TestContract05_YieldAdapters is Test {
 
         // Transfer and invest
         vm.prank(vault);
-        asset.transfer(address(adapter), 100 ether);
+        require(asset.transfer(address(adapter), 100 ether), "Transfer failed");
 
         vm.prank(vault);
         adapter.invest(100 ether);
@@ -219,7 +219,7 @@ contract TestContract05_YieldAdapters is Test {
 
         // Invest
         vm.prank(vault);
-        asset.transfer(address(adapter), 100 ether);
+        require(asset.transfer(address(adapter), 100 ether), "Transfer failed");
 
         vm.prank(vault);
         adapter.invest(100 ether);
@@ -267,7 +267,7 @@ contract TestContract05_YieldAdapters is Test {
 
         // Transfer and invest
         vm.prank(vault);
-        asset.transfer(address(adapter), 100 ether);
+        require(asset.transfer(address(adapter), 100 ether), "Transfer failed");
 
         vm.prank(vault);
         adapter.invest(100 ether);
@@ -290,7 +290,7 @@ contract TestContract05_YieldAdapters is Test {
 
         // Invest
         vm.prank(vault);
-        asset.transfer(address(adapter), 100 ether);
+        require(asset.transfer(address(adapter), 100 ether), "Transfer failed");
 
         vm.prank(vault);
         adapter.invest(100 ether);
@@ -325,7 +325,7 @@ contract TestContract05_YieldAdapters is Test {
 
         // Invest
         vm.prank(vault);
-        asset.transfer(address(adapter), 100 ether);
+        require(asset.transfer(address(adapter), 100 ether), "Transfer failed");
 
         vm.prank(vault);
         adapter.invest(100 ether);
@@ -345,7 +345,7 @@ contract TestContract05_YieldAdapters is Test {
 
         // Invest
         vm.prank(vault);
-        asset.transfer(address(adapter), 100 ether);
+        require(asset.transfer(address(adapter), 100 ether), "Transfer failed");
 
         vm.prank(vault);
         adapter.invest(100 ether);
@@ -372,7 +372,7 @@ contract TestContract05_YieldAdapters is Test {
 
         // Invest
         vm.prank(vault);
-        asset.transfer(address(adapter), 100 ether);
+        require(asset.transfer(address(adapter), 100 ether), "Transfer failed");
 
         vm.prank(vault);
         adapter.invest(100 ether);

@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
  * @title MockAavePool
@@ -86,9 +87,9 @@ contract MockAavePool {
 
         reserves[asset] = ReserveData({
             configuration: 0,
-            liquidityIndex: uint128(RAY), // Start at 1.0
+            liquidityIndex: SafeCast.toUint128(RAY), // Start at 1.0
             currentLiquidityRate: 0, // No automatic accrual
-            variableBorrowIndex: uint128(RAY),
+            variableBorrowIndex: SafeCast.toUint128(RAY),
             currentVariableBorrowRate: 0,
             currentStableBorrowRate: 0,
             lastUpdateTimestamp: uint40(block.timestamp),
@@ -230,7 +231,7 @@ contract MockAavePool {
         // All holders' balances grow proportionally via: balance = scaledBalance * index / RAY
         uint256 oldIndex = uint256(reserves[asset].liquidityIndex);
         uint256 deltaIndex = (yieldAmount * RAY) / scaledSupply;
-        reserves[asset].liquidityIndex = uint128(oldIndex + deltaIndex);
+        reserves[asset].liquidityIndex = SafeCast.toUint128(oldIndex + deltaIndex);
         reserves[asset].lastUpdateTimestamp = uint40(block.timestamp);
     }
 }

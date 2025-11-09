@@ -173,7 +173,7 @@ contract TestAction01_CampaignLifecycle is Base03_DeployComprehensiveEnvironment
         // Step 2: Transfer funds from vault to adapter and invest
         // FIX: Use vault.transfer(), not transferFrom (no approval needed)
         vm.prank(climateVault);
-        usdc.transfer(address(climateAaveAdapter), totalDeposits);
+        require(usdc.transfer(address(climateAaveAdapter), totalDeposits), "Transfer failed");
 
         // Adapter invests into Aave
         vm.prank(climateVault); // Only vault can call adapter.invest()
@@ -710,7 +710,7 @@ contract TestAction01_CampaignLifecycle is Base03_DeployComprehensiveEnvironment
         // Transfer assets from vault to adapter
         uint256 vaultBalance = asset.balanceOf(vault);
         vm.prank(vault);
-        asset.transfer(adapter, vaultBalance);
+        require(asset.transfer(adapter, vaultBalance), "Transfer failed");
 
         // Adapter invests
         vm.prank(vault);
